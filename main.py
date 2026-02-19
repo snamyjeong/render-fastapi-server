@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-# 1. API 키 로드
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 def load_system_instruction():
@@ -26,25 +25,15 @@ class EssayRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"status": "running", "api_key_loaded": bool(GEMINI_API_KEY)}
-
-# [추가] 내 API 키로 쓸 수 있는 모델이 뭔지 구글에 직접 물어보는 주소
-@app.get("/models")
-async def check_available_models():
-    if not GEMINI_API_KEY:
-        return {"error": "API Key is missing"}
-    
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
-    response = requests.get(url)
-    return response.json()
+    return {"status": "running", "model_target": "gemini-2.5-flash"}
 
 @app.post("/upload")
 async def upload_content(request: EssayRequest):
     if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="서버에 API 키가 설정되지 않았습니다.")
+        raise HTTPException(status_code=500, detail="API 키가 없습니다.")
 
-    # 1.5-flash-latest 로 이름 살짝 변경 (혹시 모를 별칭 문제 대비)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
+    # [핵심] 성남님 계정에서 지원하는 2.5 Flash 모델 이름으로 정확히 교체
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
         "system_instruction": {
@@ -62,12 +51,14 @@ async def upload_content(request: EssayRequest):
         response_data = response.json()
 
         if response.status_code != 200:
-            error_msg = response_data.get("error", {}).get("message", "Unknown Google API Error")
+            error_msg = response_data.get("error", {}).get("message", "Unknown API Error")
             print(f"Google Raw Error: {error_msg}")
-            raise HTTPException(status_code=response.status_code, detail=f"구글 API 에러: {error_msg}")
+            raise HTTPException(status_code=response.status_code, detail=f"API 에러: {error_msg}")
         
+        # 응답 파싱
         ai_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
         return {"result": ai_text}
 
     except Exception as e:
+        print(f"Server Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"내부 에러: {str(e)}")
