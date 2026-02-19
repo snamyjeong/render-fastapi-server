@@ -1,59 +1,47 @@
 import os
 import json
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import openai
+import google.generativeai as genai
 
 app = FastAPI()
 
-# [보안] 환경 변수에서 API 키 로드
-API_KEY = os.getenv("OPENAI_API_KEY")
-client = openai.OpenAI(api_key=API_KEY)
+# 1. 환경변수 및 제미나이 설정
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_API_KEY)
+
+# 2. prompts.json 로드 (시스템 지침)
+def load_system_instruction():
+    try:
+        with open("prompts.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            # 성남님이 이전에 정의한 key 이름("system_instructions")을 사용합니다.
+            return data.get("system_instructions", "너는 유능한 AI 어시스턴트야.")
+    except Exception as e:
+        print(f"프롬프트 파일 로드 실패: {e}")
+        return "너는 유능한 AI 어시스턴트야."
+
+SYSTEM_INSTRUCTION = load_system_instruction()
 
 class EssayRequest(BaseModel):
     content: str
 
-# [Helper] JSON에서 프롬프트 읽기 함수
-def get_prompt_from_json():
+@app.post("/send_essay")
+async def send_essay(request: EssayRequest):
     try:
-        # 파일 경로를 절대 경로로 잡는 것이 안전합니다 (Render/WSL 공통)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        file_path = os.path.join(current_dir, "prompts.json")
-        
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("system_instructions", "")
-    except Exception as e:
-        print(f"JSON 로드 에러: {e}")
-        # 파일이 없을 때를 대비한 최소한의 Fallback 프롬프트
-        return "너는 엔지니어의 비서 JAVIS야. 입력에 대해 정중히 응답해줘."
-
-@app.get("/")
-def read_root():
-    return "OK"
-
-@app.post("/upload")
-async def handle_essay(request: EssayRequest):
-    user_text = request.content
-    
-    if not API_KEY:
-        return {"result": "서버 설정 에러: API 키가 없습니다."}
-
-    # API 호출 시마다 JSON을 다시 읽어오므로, 파일 수정 후 재배포 없이(또는 재시작 후) 즉시 반영됩니다.
-    system_prompt = get_prompt_from_json()
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_text}
-            ],
-            temperature=0.7
+        # 3. 모델 설정 (시스템 지침 주입)
+        # 제미나이는 모델 생성 시점에 system_instruction을 고정할 수 있습니다.
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            system_instruction=SYSTEM_INSTRUCTION
         )
         
-        ai_result = response.choices[0].message.content
-        return {"result": ai_result}
+        # 4. 콘텐츠 생성
+        response = model.generate_content(request.content)
+        
+        # 5. 기존 안드로이드 앱과 100% 호환되는 JSON 구조 반환
+        return {"result": response.text}
 
     except Exception as e:
-        return {"result": f"AI 분석 중 오류 발생: {str(e)}"}
+        print(f"에러 발생: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
