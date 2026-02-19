@@ -26,8 +26,8 @@ SYSTEM_INSTRUCTION = load_system_instruction()
 class EssayRequest(BaseModel):
     content: str
 
-@app.post("/send_essay")
-async def send_essay(request: EssayRequest):
+@app.post("/upload")
+async def upload_content(request: EssayRequest):
     try:
         # 3. 모델 설정 (시스템 지침 주입)
         # 제미나이는 모델 생성 시점에 system_instruction을 고정할 수 있습니다.
