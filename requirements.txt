@@ -12,5 +12,5 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.40.0
 openai
-google-generativeai  # 다시 이 라이브러리를 사용합니다.
+google-generativeai>=0.7.2  # 다시 이 라이브러리를 사용합니다.
 pydantic
